@@ -1,0 +1,119 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: fitness_postgres
+    environment:
+      POSTGRES_DB: fitness
+      POSTGRES_USER: fitness_user
+      POSTGRES_PASSWORD: fitness_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitness_user -d fitness"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fitness
+
+  simulator:
+    build: ./app
+    container_name: fitness_simulator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: fitness
+      DB_USER: fitness_user
+      DB_PASSWORD: fitness_password
+    networks:
+      - fitness
+
+  redis:
+    image: redis:7-alpine
+    container_name: fitness_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - fitness
+
+  redash_init:
+    image: redash/redash:latest
+    container_name: fitness_redash_init
+    command: create_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      REDASH_DATABASE_URL: "postgresql://fitness_user:fitness_password@postgres:5432/redash"
+      REDASH_REDIS_URL: "redis://redis:6379/0"
+      PYTHONUNBUFFERED: "1"
+      REDASH_COOKIE_SECRET: "very-secret-cookie"
+      REDASH_SECRET_KEY: "very-secret-key"
+    networks:
+      - fitness
+
+  redash_server:
+    image: redash/redash:latest
+    container_name: fitness_redash_server
+    command: server
+    ports:
+      - "5005:5000"
+    depends_on:
+      - postgres
+      - redis
+      - redash_init
+    environment:
+      REDASH_DATABASE_URL: "postgresql://fitness_user:fitness_password@postgres:5432/redash"
+      REDASH_REDIS_URL: "redis://redis:6379/0"
+      PYTHONUNBUFFERED: "1"
+      REDASH_HOST: "http://localhost:5005"
+      REDASH_MAIL_DEFAULT_SENDER: "noreply@example.com"
+      REDASH_COOKIE_SECRET: "very-secret-cookie"
+      REDASH_SECRET_KEY: "very-secret-key"
+    networks:
+      - fitness
+
+  redash_worker:
+    image: redash/redash:latest
+    container_name: fitness_redash_worker
+    command: worker
+    depends_on:
+      - redash_server
+    environment:
+      REDASH_DATABASE_URL: "postgresql://fitness_user:fitness_password@postgres:5432/redash"
+      REDASH_REDIS_URL: "redis://redis:6379/0"
+      PYTHONUNBUFFERED: "1"
+      REDASH_COOKIE_SECRET: "very-secret-cookie"
+      REDASH_SECRET_KEY: "very-secret-key"
+    networks:
+      - fitness
+
+  redash_scheduler:
+    image: redash/redash:latest
+    container_name: fitness_redash_scheduler
+    command: scheduler
+    depends_on:
+      - redash_server
+    environment:
+      REDASH_DATABASE_URL: "postgresql://fitness_user:fitness_password@postgres:5432/redash"
+      REDASH_REDIS_URL: "redis://redis:6379/0"
+      PYTHONUNBUFFERED: "1"
+      REDASH_COOKIE_SECRET: "very-secret-cookie"
+      REDASH_SECRET_KEY: "very-secret-key"
+    networks:
+      - fitness
+
+volumes:
+  postgres_data:
+
+networks:
+  fitness:
+    driver: bridge
