@@ -8,5 +8,10 @@
 - **Redis** — используется Redash для кэширования.
 
 ## Запуск
-```bash
+~~bash
+
 docker-compose up
+
+## Dashboard
+
+![Дашборд Fitness Tracker](screenshots/dashboard.png)
